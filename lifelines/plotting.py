@@ -42,12 +42,37 @@ def plot_lifetimes(lifetimes, censorship = None, birthtimes=None, order=False):
     plt.ylim(-0.5, N)
     plt.show()
 
-
+import pdb
 def plot_dataframes(self, estimate):
-    def plot(c="#348ABD", **kwargs):
-      ax = getattr(self, estimate).plot(c=c, marker='o', markeredgewidth=0, markersize=5, **kwargs)
-      kwargs["ax"] = ax
-      self.confidence_interval_.plot(c=c, linestyle="--", **kwargs)
+    colors = [   "#348ABD",
+                  "#A60628",
+                  "#7A68A6",
+                  "#467821",
+                  "#CF4457",
+                  "#188487",
+                  "#E24A33"]
+    def plot(color=colors, ignore_ci = False, **kwargs):
+      """
+      Plot the estimate and the confidence intervals.
+
+      Parameters:
+        color: an array of colors to cycle through
+        ignore_ci: If true, do not plot the confidence intervals.
+      """
+      estimate_ = getattr(self, estimate)
+      n,m = estimate_.shape
+      pdb.set_trace()
+      if n<=50:
+         ax = estimate_.plot(color=colors[:m], marker='o', markeredgewidth=0, markersize=5, **kwargs)
+      else:
+         ax = estimate_.plot(color=colors[:m], **kwargs)
+      #cycle through the conf. intervals
+      if not ignore_ci:
+        for i in range(0,m+2,2):
+          col = self.confidence_interval_.columns[i:i+2]
+          c_ = [color[i]]
+          self.confidence_interval_[col].plot(color=c_, linestyle="--", ax=ax, **kwargs)
+
       return ax
     return plot
 

@@ -4,9 +4,9 @@ from numpy import dot
 import pandas as pd
 
 from lifelines.plotting import plot_dataframes
-from lifelines.utils import dataframe_from_events_censorship, basis, inv_normal_cdf
+from lifelines.utils import dataframe_from_events_censorship, basis, inv_normal_cdf,group_event_series
 
-
+import pdb
 
 
 class NelsonAalenFitter(object):
@@ -53,8 +53,8 @@ class NelsonAalenFitter(object):
         else:
            self.timeline = timeline
         self.cumulative_hazard_, cumulative_sq_ = _additive_estimate(self.event_times, 
-                                                                     self.timeline, self.censorship, 
-                                                                     self._additive_f, 0, columns, self._variance_f )
+                                                                     self.timeline, 
+                                                                     self._additive_f, columns, self._variance_f )
         self.confidence_interval_ = self._bounds(cumulative_sq_)
         self.plot = plot_dataframes(self, "cumulative_hazard_")
 
@@ -95,58 +95,74 @@ class KaplanMeierFitter(object):
   def __init__(self, alpha=0.95):
        self.alpha = alpha
 
-  def fit(self, event_times, censorship=None, timeline=None, columns=['KM-estimate']):
+  def fit(self, event_times, censorship=None, groups=None, timeline=None, columns=None):
        """
        Parameters:
          event_times: an (n,1) array of times that the death event occured at 
          timeline: return the best estimate at the values in timelines (postively increasing)
          censorship: an (n,1) array of booleans -- True if the the death was observed, False if the event 
             was lost (right-censored). Defaults all True if censorship==None
+
        Returns:
          DataFrame with index either event_times or timelines (if not None), with
          values as the NelsonAalen estimate
        """
-       #need to sort event_times
+       #set to all observed if censorship is none
        if censorship is None:
           self.censorship = np.ones_like(event_times, dtype=bool) #why boolean?
        else:
           self.censorship = censorship.copy()
 
-       self.event_times = dataframe_from_events_censorship(event_times, self.censorship)
+       #sugar.
+       if groups is None:
+         groups = np.ones_like(event_times)
+
+       unique_groups, removed, observed = group_event_series(groups, event_times, self.censorship)
+
+       #default to some nice columns names 
+       if columns is None:
+          if groups is None:
+             columns = ["K-M estimate"]
+          else:
+             columns = [ "K-M estimate:%s"%g.__str__() for g in unique_groups]
 
        if timeline is None:
-          self.timeline = self.event_times.index.values.copy()
+          self.timeline = removed.index.values.copy()
        else:
           self.timeline = timeline
-       log_surivial_function, cumulative_sq_ = _additive_estimate(self.event_times, self.timeline, 
-                                                                  self.censorship, self._additive_f, 
-                                                                  0, columns, self._variance_f )
+       log_surivial_function, cumulative_sq_ = _multi_additive_estimate(removed, observed, self.timeline, 
+                                                                  self._additive_f, 
+                                                                   columns, self._variance_f )
        self.survival_function_ = np.exp(log_surivial_function)
        self.median_ = median_survival_times(self.survival_function_)
        self.confidence_interval_ = self._bounds(cumulative_sq_)
        self.plot = plot_dataframes(self, "survival_function_")
        return self
 
-  def _additive_f(self, N, d):
-      if N==d==0:
-        return 0
-      return np.log(1 - 1.*d/N)
+
+  def _additive_f(self,N,d):
+      v= np.log(1 - 1.*d/N)
+      v[(d+N) == 0] = 0
+      return v
 
   def _bounds(self, cumulative_sq_):
       alpha2 = inv_normal_cdf(1 - (1-self.alpha)/2)
-      df = pd.DataFrame( index=self.timeline)
-      name = self.survival_function_.columns[0]
-      df["%s_upper_%.2f"%(name,self.alpha)] = self.survival_function_.values**(np.exp(alpha2*cumulative_sq_/np.log(self.survival_function_.values)))
-      df["%s_lower_%.2f"%(name,self.alpha)] = self.survival_function_.values**(np.exp(-alpha2*cumulative_sq_/np.log(self.survival_function_.values)))
+      df = pd.DataFrame( index=self.survival_function_.index)
+
+      #iterate over the groups
+      for i,name in enumerate(self.survival_function_.columns):
+          v = self.survival_function_.values[:,i][:,None]
+          csq = cumulative_sq_.values[:,i][:,None]
+          df["%s_upper_%.2f"%(name,self.alpha)] = v**(np.exp(alpha2*csq/(v*np.log(v))))
+          df["%s_lower_%.2f"%(name,self.alpha)] = v**(np.exp(-alpha2*csq/(v*np.log(v))))
       return df
 
   def _variance_f(self, N, d):
-     if N==d==0:
-        return 0
-     return 1.*d/(N*(N-d))
+      v= 1.*d/(N*(N-d))
+      v[(d+N) == 0] = 0
+      return v
 
-
-def _additive_estimate(event_times, timeline, observed, additive_f, initial, columns, variance_f):
+def _additive_estimate(event_times, timeline, additive_f, columns, variance_f):
     """
 
     nelson_aalen_smoothing: see section 3.1.3 in Survival and Event History Analysis
@@ -161,11 +177,11 @@ def _additive_estimate(event_times, timeline, observed, additive_f, initial, col
     _additive_var = pd.DataFrame(np.zeros((n,1)), index=timeline)
 
     N = event_times["removed"].sum()
-    t_0 =0
-    _additive_estimate_.ix[(timeline<t_0)]=initial
+    t_0 = 0
+    _additive_estimate_.ix[(timeline<t_0)]=0
     _additive_var.ix[(timeline<t_0)]=0
 
-    v = initial
+    v = 0
     v_sq = 0
     for t, removed, observed_deaths in event_times.itertuples():
         times = (t_0<=timeline)*(timeline<t)
@@ -177,6 +193,49 @@ def _additive_estimate(event_times, timeline, observed, additive_f, initial, col
         v_sq += variance_f(N,observed_deaths)
         N -= observed_deaths
         t_0 = t
+    _additive_estimate_.ix[(timeline>=t)]=v
+    _additive_var.ix[(timeline>=t)]=v_sq
+    return _additive_estimate_, _additive_var
+
+def _multi_additive_estimate(removed, observed, timeline, additive_f, columns, variance_f):
+    """
+
+    nelson_aalen_smoothing: see section 3.1.3 in Survival and Event History Analysis
+
+    """
+    timeline = timeline.astype(float)
+    if timeline[0] > 0:
+       timeline = np.insert(timeline,0,0.)
+
+    n = timeline.shape[0]
+    m = removed.shape[1]
+    initial = np.zeros(m)
+
+    _additive_estimate_ = pd.DataFrame(np.zeros((n,m)), index=timeline, columns=columns)
+    _additive_var = pd.DataFrame(np.zeros((n,m)), index=timeline)
+
+    N = removed.sum(0).values
+    t_0 =0
+    _additive_estimate_.ix[(timeline<t_0)]=initial
+    _additive_var.ix[(timeline<t_0)]=0
+    v = initial
+    v_sq = initial
+    for t in removed.index:
+        removed_count = removed.ix[t].values
+        observed_deaths = observed.ix[t].values
+        times = (t_0<=timeline)*(timeline<t)
+
+        _additive_estimate_.ix[times] = v  
+        _additive_var.ix[times] = v_sq
+
+        missing = removed_count - observed_deaths
+        N = N - missing
+        v = v + additive_f(N,observed_deaths)
+        v_sq = v_sq + variance_f(N, observed_deaths)
+        #pdb.set_trace()
+        N = N - observed_deaths
+        t_0 = t
+
     _additive_estimate_.ix[(timeline>=t)]=v
     _additive_var.ix[(timeline>=t)]=v_sq
     return _additive_estimate_, _additive_var
