@@ -27,7 +27,8 @@ class NelsonAalenFitter(object):
           self._variance_f = self._variance_f_discrete
           self._additive_f = self._additive_f_discrete
 
-    def fit(self, event_times,censorship=None, timeline=None, columns=['NA-estimate'], alpha=None, insert_0=True):
+    def fit(self, event_times, censorship=None, timeline=None, columns=['NA-estimate'], 
+            alpha=None, insert_0=True, delayed_entrance = None):
         """
         Parameters:
           event_times: an (n,1) array of times that the death event occured at
@@ -48,7 +49,7 @@ class NelsonAalenFitter(object):
         else:
            self.censorship = np.array(censorship).copy().astype(bool)
            
-        self.event_times = survival_table_from_events(event_times, self.censorship)
+        self.event_times = survival_table_from_events(event_times, self.censorship, delayed_entrance=delayed_entrance)
 
         if alpha is None:
             alpha = self.alpha
@@ -141,7 +142,8 @@ class KaplanMeierFitter(object):
   def __init__(self, alpha=0.95):
        self.alpha = alpha
 
-  def fit(self, event_times, censorship=None, timeline=None, columns=['KM-estimate'], alpha=None, insert_0=True):
+  def fit(self, event_times, censorship=None, timeline=None, 
+          columns=['KM-estimate'], alpha=None, insert_0=True, delayed_entrance=None):
        """
        Parameters:
          event_times: an (n,1) array of times that the death event occured at
@@ -166,7 +168,7 @@ class KaplanMeierFitter(object):
        if not alpha:
           alpha = self.alpha
 
-       self.event_times = survival_table_from_events(event_times, self.censorship)
+       self.event_times = survival_table_from_events(event_times, self.censorship, delayed_entrance=delayed_entrance)
 
        if timeline is None:
           self.timeline = self.event_times.index.values.copy().astype(float)
@@ -221,7 +223,7 @@ def _additive_estimate(events, timeline, _additive_f, _additive_var):
     N = events["removed"].sum()
 
     deaths = events['observed']
-    population = N - events['removed'].cumsum().shift(1).fillna(0)
+    population = N - (events['removed'] + events['added']).cumsum().shift(1).fillna(0)
     estimate_ = np.cumsum(_additive_f(population,deaths))
     var_ = np.cumsum(_additive_var(population, deaths))
 
@@ -254,8 +256,9 @@ class AalenAdditiveFitter(object):
     def __init__(self,fit_intercept=True, alpha=0.95, penalizer = 0.0):
         self.fit_intercept = fit_intercept
         self.alpha = alpha
-        self.penalizer = penalizer
         assert penalizer >= 0, "penalizer keyword must be >= 0."
+        self.penalizer = penalizer
+
 
     def fit(self, event_times, X, timeline=None, censorship=None, columns=None):
         """currently X is a static (n,d) array

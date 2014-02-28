@@ -76,13 +76,20 @@ def group_event_series( groups, durations, censorship, limit=-1):
     return unique_groups, data.filter(like='removed:'), data.filter(like='observed:'), data.filter(like='censored:')
 
 
-def survival_table_from_events(event_times, censorship, columns=["removed", "observed", "censored"], weights=None):
+def survival_table_from_events(event_times, censorship, columns=["removed", "observed", "censored"],
+                               weights=None, delayed_entrance=None):
     """
     Parameters:
-        event_times: (n,1) array of event times 
+        event_times: (n,1) np array of event times 
         censorship: if not None, (n,1) boolean array, 1 if observed event, 0 is censored
         columns: a 3-length array to call the, in order, removed individuals, observed deaths
           and censorships.
+        delayed_entrace: a (n,1) array of float representing a time to entrance. Default: None (all zeros).
+            This can occur if the subject is only part of the study after surviving for a minimum time. Ex:
+            children only enter a study when they enter school. Suppose an individual's delay is t*, why can't
+            I simply add that to the observed lifespan, T? This would incorrectly have include them in 
+            calculations prior to t*, when they were not really part of the risk set. Individuals
+            with a delayed response can be seen as negative losses.
 
     Returns:
         Pandas DataFrame with index as the unique times in event_times. The columns named 
@@ -98,24 +105,37 @@ def survival_table_from_events(event_times, censorship, columns=["removed", "obs
 
         #output
 
-                  removed  observed  censored
+                  removed  observed  censored  added
         event_at
-        6               1         1         0
-        7               2         2         0
-        9               3         3         0
-        13              3         3         0
-        15              2         2         0
+        6               1         1         0      0
+        7               2         2         0      0
+        9               3         3         0      0
+        13              3         3         0      0
+        15              2         2         0      0
 
     """
-    event_times = np.array( event_times )
-    df = pd.DataFrame( event_times.astype(float), columns=["event_at"] )
+    event_times = np.array(event_times)
+    df = pd.DataFrame(event_times.astype(float), columns=["event_at"])
     df[columns[0]] = 1 if weights == None else weights
     df[columns[1]] = censorship
+
+    if delayed_entrance is None:
+        delayed_entrance = np.zeros(event_times.shape[0])
+
+    ix = (delayed_entrance > 0)
+    df['event_at'] += delayed_entrance
+    delayed_df = pd.DataFrame( 
+                    np.c_[ np.ones(ix.sum()), event_times[ix]], 
+                    columns = ['added', 'event_at']
+                 )
+    df = df.append(delayed_df).fillna(0)
+
     event_times = df.groupby("event_at").sum().sort_index()
     event_times[columns[2]] = event_times[columns[0]] - event_times[columns[1]]
+
     return event_times
 
-def datetimes_to_durations( start_times, end_times, fill_date=datetime.today(),  freq='D', dayfirst=False, na_values=None ):
+def datetimes_to_durations( start_times, end_times, fill_date=datetime.today(), freq='D', dayfirst=False, na_values=None ):
     """
     This is a very flexible function for transforming arrays of start_times and end_times 
     to the proper format for lifelines: duration and censorship arrays.

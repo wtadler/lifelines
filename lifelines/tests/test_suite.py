@@ -14,7 +14,7 @@ from ..estimation import KaplanMeierFitter, NelsonAalenFitter, AalenAdditiveFitt
 from ..statistics import logrank_test, multivariate_logrank_test, pairwise_logrank_test
 from ..generate_datasets import *
 from ..plotting import plot_lifetimes
-from ..utils import datetimes_to_durations
+from ..utils import datetimes_to_durations, survival_table_from_events
 
 class MiscTests(unittest.TestCase):
 
@@ -89,6 +89,15 @@ class MiscTests(unittest.TestCase):
         npt.assert_almost_equal(C, np.array([1,0,0], dtype=bool) )
         return
     """
+    
+    def test_survival_data_to_dataframe_delayed_entrace(self):
+       T = np.array([6, 5, 2, 2, 5, 4, 4, 3, 6, 4])
+       D = np.array([0, 0, 0, 0, 1, 1, 0, 0, 2, 1])
+       C = np.ones_like(T)
+       df = survival_table_from_events(T, C, delayed_entrance=D )
+       npt.assert_almost_equal( df['added'].values, np.array([ 0., 0., 2., 1., 1., 0.]))
+
+
 class StatisticalTests(unittest.TestCase):
 
   def setUp(self):
@@ -394,6 +403,7 @@ class PlottingTests(unittest.TestCase):
       aaf = AalenAdditiveFitter(penalizer=0., fit_intercept=False)
       aaf.fit(T,X, censorship=C, columns = coef.columns)
       ax=aaf.plot(iloc=slice(0, aaf.cumulative_hazards_.shape[0]-100))
+      ax.legend()
       ax.set_xlabel("time")
       ax.set_title('.plot() cumulative hazards')
       return
