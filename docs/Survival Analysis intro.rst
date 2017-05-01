@@ -21,8 +21,8 @@ Traditionally, sort of a morbid subject.
 The analysis can be further applied to not just traditional *births and
 deaths*, but any duration. Medical professionals might be interested in
 the *time between childbirths*, where a birth in this case is the event
-of having a child, and a death is becoming pregnant again! (obviously,
-we are loose with our definitions of *birth and death*)! Another example
+of having a child, and a death is becoming pregnant again! Obviously,
+we are loose with our definitions of *birth and death*! Another example
 is users subscribing to a service: a birth is a user who joins the
 service, and a death is when the user leaves the service.
 
@@ -31,7 +31,7 @@ Censorship
 
 
 At the time you want to make inferences about durations, it is possible, likely
-true, that not all the death events have occured yet. For example, a
+true, that not all the death events have occurred yet. For example, a
 medical professional will not wait 50 years for each individual in the
 study to pass away before investigating -- he or she is interested in
 the effectiveness of improving lifetimes after only a few years, or months possibly.
@@ -51,7 +51,7 @@ Consider a case where the population is actually made up of two
 subpopulations, :math:`A` and :math:`B`. Population :math:`A` has a very
 small lifespan, say 2 months on average, and population :math:`B`
 enjoys a much larger lifespan, say 12 months on average. We might
-not know this distinction before hand. At :math:`t=10`, we
+not know this distinction beforehand. At :math:`t=10`, we
 wish to investigate the average lifespan. Below is an example of such a
 situation.
 
@@ -139,7 +139,7 @@ a webpage (an infinite time if they never do). The survival function -
 
 .. math::  S(t) = Pr( T > t) 
 
-In plain English: the survival function defines the probability the death event has not occured yet at time
+In plain English: the survival function defines the probability the death event has not occurred yet at time
 :math:`t`, or equivalently, the probability of surviving past time
 :math:`t`. Note the following properties of the survival function:
 
